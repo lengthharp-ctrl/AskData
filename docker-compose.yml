@@ -1,0 +1,29 @@
+services:
+  askdata:
+    build: .
+    image: askdata:latest
+    ports:
+      - "8000:8000"
+    environment:
+      ASKDATA_LLM_PROVIDER: ${ASKDATA_LLM_PROVIDER:-mock}
+      ASKDATA_LLM_API_KEY: ${ASKDATA_LLM_API_KEY:-}
+      ASKDATA_DATA_DIR: /app/data
+    # 应用层加固：非 root、去能力、只读根文件系统、资源上限。
+    # 注意：这是给「应用进程」的纵深防御，限制被攻破后的爆炸半径；
+    # 沙箱子进程仍在同一容器/同一用户内，真正的代码执行硬边界需要
+    # gVisor / seccomp / firejail 对子进程做系统级隔离（见 Roadmap）。
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    volumes:
+      - askdata_data:/app/data
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+
+volumes:
+  askdata_data:

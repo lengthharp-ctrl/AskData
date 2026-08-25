@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AskData · 自然语言数据分析助手</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📊</span>
+      <span>AskData</span>
+    </div>
+    <div class="badge" title="LLM 生成的代码在独立沙箱中执行：静态扫描 / 断网 / 白名单导入 / 超时 / 内存限制">🔒 沙箱安全执行</div>
+  </header>
+
+  <main>
+    <!-- 落地页 -->
+    <section id="landing" class="landing">
+      <h1>用大白话，分析你的数据</h1>
+      <p class="subtitle">上传 CSV / Excel，像聊天一样提问。<br>AI 自动生成 pandas 代码、在沙箱里安全运行，返回表格和图表。</p>
+      <div class="hero-actions">
+        <button id="btn-sample" class="btn btn-primary btn-lg">🚀 一键体验示例数据</button>
+        <label class="btn btn-ghost btn-lg">📁 上传 CSV / Excel
+          <input id="file-input" type="file" accept=".csv,.xlsx,.xls" hidden>
+        </label>
+      </div>
+      <div class="feature-row">
+        <div class="feature"><span class="feature-icon">🛡️</span>LLM 生成代码<div class="feature-sub">五层沙箱防护</div></div>
+        <div class="feature"><span class="feature-icon">⚡</span>秒级出结果<div class="feature-sub">表格 + 图表</div></div>
+        <div class="feature"><span class="feature-icon">🧩</span>多模型切换<div class="feature-sub">DeepSeek / Gemini</div></div>
+      </div>
+      <div id="landing-error" class="landing-error hidden"></div>
+    </section>
+
+    <!-- 工作区 -->
+    <section id="workspace" class="workspace hidden">
+      <aside class="data-panel">
+        <div class="panel-head">
+          <h2>📋 数据</h2>
+          <span id="file-name" class="file-name"></span>
+        </div>
+        <div id="stats" class="stats"></div>
+        <div id="schema" class="schema"></div>
+        <div class="preview-title">前几行预览</div>
+        <div class="preview-wrap">
+          <table id="preview-table" class="table"></table>
+        </div>
+      </aside>
+
+      <section class="chat-panel">
+        <div id="messages" class="messages"></div>
+        <div id="suggestions" class="suggestions"></div>
+        <form id="chat-form" class="chat-input">
+          <input id="chat-text" type="text" placeholder="例如：按月统计销售额，画个折线图…" autocomplete="off" disabled>
+          <button id="send-btn" type="submit" disabled>发送</button>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">AskData · FastAPI + pandas + 沙箱执行 · 示例项目</footer>
+
+  <script src="https://cdn.plotly.com/plotly-2.35.2.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
