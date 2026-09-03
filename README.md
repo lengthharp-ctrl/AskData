@@ -2,7 +2,7 @@
 
 上传一个 CSV / Excel，用大白话提问（「按月统计销售额」「哪个品类最赚钱，画个柱状图」），AI 自动生成 pandas 代码，在**安全沙箱**中执行，返回表格和图表。
 
-> 🌐 在线体验：**（部署后把链接贴在这里）** —— 参见[部署指南](#部署)（Hugging Face Spaces / Render 免费方案，约 5 分钟）
+> 🌐 **在线体验（点开即用，无需注册/Key，mock 演示模式）：https://askdata-boov.onrender.com** ，首次打开免费实例需冷启动，等待约 30~50 秒属正常现象。自己也可按[部署指南](#部署免费)（Hugging Face Spaces / Render 免费方案，约 5 分钟）部署一份。
 
 ---
 
@@ -13,7 +13,7 @@
 3. **可点开即用的在线演示**：预置 800 行电商销售示例数据，「一键体验」无需上传即可看到完整效果。
 4. **模型可插拔**：DeepSeek / Gemini / 任意 OpenAI 兼容接口统一走 openai SDK，切换只改一个环境变量；无 Key 时自动降级为 mock 演示模式。
 
-部署后访问 `https://你的空间地址/?demo=1` 即可自动加载示例数据并完成一次完整问答（适合放进简历和给面试官现场演示）。
+线上演示地址 https://askdata-boov.onrender.com ，访问 `https://askdata-boov.onrender.com/?demo=1` 可自动加载示例数据并完成一次完整问答（适合放进简历和给面试官现场演示）。
 
 ---
 
@@ -192,8 +192,9 @@ pytest -v
 
 1. New Web Service → 关联仓库；
 2. Build Command：`pip install -r requirements.txt`；
-3. Start Command：`uvicorn app.main:app --host 0.0.0.0 --port $PORT`；
-4. Environment 里配置 LLM 变量。
+3. Runtime 选 **Python 3**（不要用仓库里的 Dockerfile，其端口写死为 8000），Start Command：`uvicorn app.main:app --host 0.0.0.0 --port $PORT`；
+4. 实例选 **Free（$0）** 即可，代码已内置数值库单线程限制以适配 512MB 内存；免费实例 CPU 较弱，建议在 Environment 加 `ASKDATA_SANDBOX_TIMEOUT_S=15`（默认 5 秒在 0.1 核上首次画图可能超时）；
+5. 需要真实模型时再在 Environment 配置 LLM 变量；不配则自动进入 mock 演示模式。
 
 ### Docker Compose（本地 / 任意 VPS）
 
