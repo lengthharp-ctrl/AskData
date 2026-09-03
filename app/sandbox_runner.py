@@ -21,6 +21,12 @@ import time
 import traceback
 import types
 
+# 小内存容器（Render 免费实例 512MB）必须把数值库线程压到 1，否则 OpenBLAS
+# 按宿主机核数预分配工作区，子进程会 Memory allocation failed 直接退出。
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+           "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+
 SANDBOX_DIR = os.environ.get("ASKDATA_SANDBOX_DIR") or os.getcwd()
 CHART_DIR = os.path.join(SANDBOX_DIR, "charts")
 os.makedirs(CHART_DIR, exist_ok=True)
@@ -43,11 +49,10 @@ try:
 except Exception:
     pass
 
-try:
-    import plotly.express as px  # noqa: E402
-    import plotly.graph_objects as go  # noqa: E402
-except Exception:
-    px = go = None
+# plotly 改为按需加载：用户代码「import plotly.express as px」时经导入白名单
+# 正常加载即可；不在每个沙箱子进程顶层常驻（约省 70MB），降低小内存实例峰值。
+px = None
+go = None
 
 try:
     from PIL import Image  # noqa: E402  (matplotlib 保存 PNG 时惰性依赖)
