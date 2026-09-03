@@ -184,7 +184,9 @@ def _wait_ready(proc: subprocess.Popen, startup_timeout: float) -> tuple[bool, l
     def reader():
         assert proc.stderr is not None
         for raw in proc.stderr:
-            q.put(raw.decode("utf-8", "replace").rstrip())
+            line = raw.decode("utf-8", "replace").rstrip()
+            lines.append(line)
+            q.put(line)
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
@@ -196,15 +198,14 @@ def _wait_ready(proc: subprocess.Popen, startup_timeout: float) -> tuple[bool, l
             line = q.get(timeout=0.2)
         except queue.Empty:
             continue
-        lines.append(line)
         if line == "READY":
-            return True, lines
+            return True, lines, thread
     while True:
         try:
-            lines.append(q.get_nowait())
+            q.get_nowait()
         except queue.Empty:
             break
-    return False, lines
+    return False, lines, thread
 
 
 def _posix_limit_fn(timeout_s: float, memory_mb: int):
@@ -263,14 +264,16 @@ def run_code(
             preexec_fn=preexec,
         )
 
-        ready, stderr_lines = _wait_ready(proc, config.SANDBOX_STARTUP_TIMEOUT_S)
+        ready, stderr_lines, reader_thread = _wait_ready(proc, config.SANDBOX_STARTUP_TIMEOUT_S)
         if not ready:
             _kill_tree(proc)
             outcome.kind = "startup_error"
             outcome.message = "沙箱启动失败（依赖加载超时或异常）"
             outcome.duration_ms = int((time.perf_counter() - start) * 1000)
             if stderr_lines:
-                outcome.message += "：\n" + "\n".join(stderr_lines[-5:])
+                reader_thread.join(timeout=1.0)
+                tail = [l for l in stderr_lines if l != "READY"]
+                outcome.message += "\n".join([""] + tail[-15:]) if tail else outcome.message
             return outcome
 
         # 就绪后才开始计时：5 秒只算「用户代码执行」，不含依赖加载
@@ -302,7 +305,9 @@ def run_code(
             outcome.kind = "error"
             outcome.message = f"执行进程异常退出（exit code={proc.returncode}）"
             if stderr_lines:
-                outcome.message += "：\n" + "\n".join(stderr_lines[-5:])
+                reader_thread.join(timeout=1.0)
+                tail = [l for l in stderr_lines if l != "READY"]
+                outcome.message += "\n".join([""] + tail[-15:]) if tail else outcome.message
             return outcome
 
         if not result_file.exists():

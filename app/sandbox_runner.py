@@ -166,24 +166,33 @@ _DANGEROUS_ALWAYS_BLOCKED = {
     "ctypes", "subprocess", "importlib", "multiprocessing", "pickle", "marshal",
     "runpy", "code", "codeop", "pty", "posix",
 }
+# 分级：下列模块是白名单库（plotly/pandas）惰性加载时会内部用到的「机制类」模块，
+# 只拦用户代码的主动导入，库内部调用放行；其余硬危险模块（ctypes 等逃逸终点）不分调用方一律拦。
+_USER_ONLY_BLOCKED = {"importlib"}
+_HARD_BLOCKED = _DANGEROUS_ALWAYS_BLOCKED - _USER_ONLY_BLOCKED
 
 
 def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
     root = name.split(".")[0]
-    if root in _DANGEROUS_ALWAYS_BLOCKED:
+    # 区分调用方：只有用户代码（globals 的 __name__ 是 <askdata_code>）才受限制；
+    # 白名单库（plotly/pandas 等）内部的惰性 import（例如 plotly 内部 import importlib）
+    # 模块名由库自身决定、用户无法控制，予以放行，否则画个饼图都会被误伤。
+    caller = "<unknown>"
+    try:
+        caller = sys._getframe(1).f_globals.get("__name__", "")
+    except Exception:
+        pass
+    from_user_code = caller == "<askdata_code>"
+    if root in _HARD_BLOCKED:
+        # 硬危险模块（ctypes/subprocess/pickle 等逃逸终点）：库内部传递性导入也拦，
+        # 例如用户代码 import numpy.ctypeslib 会让 numpy 内部 import ctypes
         raise ImportError(f"沙箱：禁止导入 {name!r}（危险模块）")
-    if root not in ALLOWED_TOP_LEVEL:
-        # 只拦「用户代码」的直接导入；库内部惰性导入（pandas/matplotlib/plotly 等）
-        # 已在预加载阶段被验证，予以放行
-        caller = "<unknown>"
-        try:
-            caller = sys._getframe(1).f_globals.get("__name__", "")
-        except Exception:
-            pass
-        if caller == "<askdata_code>":
-            raise ImportError(
-                f"沙箱：禁止导入 {name!r}（仅允许 pandas/numpy/matplotlib/plotly 等白名单库）"
-            )
+    if root in _USER_ONLY_BLOCKED and from_user_code:
+        raise ImportError(f"沙箱：禁止导入 {name!r}（危险模块）")
+    if root not in ALLOWED_TOP_LEVEL and from_user_code:
+        raise ImportError(
+            f"沙箱：禁止导入 {name!r}（仅允许 pandas/numpy/matplotlib/plotly 等白名单库）"
+        )
     return _real_import(name, globals, locals, fromlist, level)
 
 
@@ -228,7 +237,50 @@ RESULTS: list[dict] = []
 CHARTS: list[dict] = []
 
 
-def _save_result(value, description="", max_rows=200, _pd=pd, _np=np, _json=json, _results=RESULTS):
+def _json_clean(obj, _pd=pd, _np=np):
+    """递归转成 JSON 安全的原生类型。
+
+    覆盖三类真实坑：
+    - pandas.Timestamp / NaT（describe(include="all")、head 日期列都会带出来）；
+    - numpy 标量（int64/float64/bool_ 不能直接 json.dump）；
+    - NaN/Inf（标准 JSON 没有这些 token，前端 JSON.parse 会失败）-> None。
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, _pd.Timestamp):
+        return None if _pd.isna(obj) else obj.isoformat()
+    if isinstance(obj, _np.integer):
+        return int(obj)
+    if isinstance(obj, _np.floating):
+        value = float(obj)
+        return None if (value != value or value in (float("inf"), float("-inf"))) else value
+    if isinstance(obj, _np.bool_):
+        return bool(obj)
+    if isinstance(obj, _np.ndarray):
+        return [_json_clean(v) for v in obj.tolist()]
+    if isinstance(obj, float):
+        return None if (obj != obj or obj in (float("inf"), float("-inf"))) else obj
+    if isinstance(obj, dict):
+        return {str(k): _json_clean(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_clean(v) for v in obj]
+    return obj
+
+
+def _json_default(o, _pd=pd):
+    """json.dump 最后兜底：未知类型尽量取值，实在不行转字符串，绝不让进程裸崩。"""
+    if isinstance(o, _pd.Timestamp):
+        return None if _pd.isna(o) else o.isoformat()
+    item = getattr(o, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except Exception:
+            pass
+    return str(o)
+
+
+def _save_result(value, description="", max_rows=200, _pd=pd, _np=np, _clean=_json_clean, _results=RESULTS):
     """把结果注册进返回结构：DataFrame/Series → 表格，标量/列表/字典 → 值。
 
     依赖通过默认参数绑定而非模块全局查找，配合下方 `types.FunctionType` 重挂
@@ -258,10 +310,11 @@ def _save_result(value, description="", max_rows=200, _pd=pd, _np=np, _json=json
         data = value.item()
     elif isinstance(value, (dict, list, tuple)):
         kind = "value"
-        data = _json.loads(_json.dumps(value, default=str, ensure_ascii=False))
+        data = value
     else:
         kind = "value"
         data = str(value)
+    data = _clean(data)
     _results.append(
         {
             "kind": kind,
@@ -394,6 +447,6 @@ if df is None and error is None:
     }
 
 with open(result_path, "w", encoding="utf-8") as f:
-    json.dump(result, f, ensure_ascii=False)
+    json.dump(result, f, ensure_ascii=False, default=_json_default, allow_nan=False)
 
 sys.exit(0)

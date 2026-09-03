@@ -106,3 +106,27 @@ def test_escape_via_numpy_ctypeslib_is_blocked():
         assert "CTYPES_IS_NONE: True" in outcome.stdout
     else:
         assert "沙箱" in outcome.message
+
+
+def test_describe_with_datetime_column_is_serializable():
+    """回归：describe(include='all') 对日期列产生 Timestamp/NaN，结果必须能序列化而不是子进程崩溃。"""
+    import json
+    outcome = _run('save_result(df.describe(include="all"), "overview")\nsave_result(df.head(3), "head")')
+    assert outcome.ok, outcome.message
+    assert outcome.results
+    json.dumps(outcome.results, ensure_ascii=False, allow_nan=False)
+
+
+def test_plotly_pie_internal_import_allowed_but_user_importlib_blocked():
+    """回归：用户代码用 plotly 画饼图时，库内部惰性 import importlib 不应被误伤；但用户主动导入 importlib 仍然拦截。"""
+    code = (
+        "import plotly.express as px\n"
+        "g = df.groupby('\u54c1\u7c7b')['\u9500\u552e\u989d'].sum().reset_index()\n"
+        "fig = px.pie(g, names='\u54c1\u7c7b', values='\u9500\u552e\u989d')\n"
+        'save_chart(fig, name="share")\n'
+    )
+    outcome = _run(code)
+    assert outcome.ok, outcome.message
+    assert outcome.charts and outcome.charts[0].format == "plotly"
+    blocked = _run("import importlib")
+    assert not blocked.ok  # 静态扫描或运行时拦截均可
