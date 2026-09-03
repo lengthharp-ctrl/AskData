@@ -49,10 +49,14 @@ try:
 except Exception:
     pass
 
-# plotly 改为按需加载：用户代码「import plotly.express as px」时经导入白名单
-# 正常加载即可；不在每个沙箱子进程顶层常驻（约省 70MB），降低小内存实例峰值。
-px = None
-go = None
+# 顶层预加载 plotly：把较重的 import 放在「启动到 READY」阶段（有 90s 启动额度），
+# 避免挤占「代码执行」时限（默认仅 5s，小 CPU 实例上首次 import plotly 就可能超时）。
+# 内存峰值实测约 205MB，512MB 实例余量充足。
+try:
+    import plotly.express as px  # noqa: E402
+    import plotly.graph_objects as go  # noqa: E402
+except Exception:
+    px = go = None
 
 try:
     from PIL import Image  # noqa: E402  (matplotlib 保存 PNG 时惰性依赖)
